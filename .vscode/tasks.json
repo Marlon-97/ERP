@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Backend",
+      "type": "npm",
+      "script": "dev",
+      "path": "backend/",
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "Start Frontend",
+      "type": "npm",
+      "script": "dev",
+      "path": "frontend/",
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "Install All Dependencies",
+      "type": "npm",
+      "script": "install:all",
+      "problemMatcher": []
+    }
+  ]
+}
