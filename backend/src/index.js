@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { config } from '../config/config.js';
+import { initializeDatabase } from './core/database/index.js';
+import { initializeDefaultData } from './core/database/seed.js';
 
 // Import routes
 import authRoutes from './modules/auth/routes.js';
@@ -57,13 +59,30 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(config.port, () => {
-  console.log(`🚀 ERP Backend running on port ${config.port}`);
-  console.log(`📝 Environment: ${config.nodeEnv}`);
-  console.log(`\n✅ Default admin credentials:`);
-  console.log(`   Username: admin`);
-  console.log(`   Password: Admin123!\n`);
-});
+// Initialize database and start server
+const startServer = async () => {
+  try {
+    // Initialize database
+    await initializeDatabase();
+    
+    // Create default data (roles and admin user)
+    await initializeDefaultData();
+    
+    // Start server
+    app.listen(config.port, () => {
+      console.log(`🚀 ERP Backend running on port ${config.port}`);
+      console.log(`📝 Environment: ${config.nodeEnv}`);
+      console.log(`💾 Database: ${config.nodeEnv === 'production' ? 'PostgreSQL' : 'SQLite'}`);
+      console.log(`\n✅ Default admin credentials:`);
+      console.log(`   Username: admin`);
+      console.log(`   Password: Admin123!\n`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 export default app;

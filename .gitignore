@@ -12,6 +12,10 @@ dist/
 build/
 *.log
 
+# Database
+*.sqlite
+*.sqlite-journal
+
 # IDE
 .vscode/*
 !.vscode/launch.json
