@@ -1,4 +1,4 @@
-import { hashPassword } from '../core/utils/auth.js';
+import { hashPassword } from './core/utils/auth.js';
 
 // In-memory data stores (replace with database in production)
 export const users = [];

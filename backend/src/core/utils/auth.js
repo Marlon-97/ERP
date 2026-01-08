@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import { config } from '../../config/config.js';
+import { config } from '../../../config/config.js';
 
 /**
  * Generate JWT token
