@@ -3,8 +3,12 @@ import { body, validationResult } from 'express-validator';
 import { roles, roleIdCounter, availablePermissions } from '../../data.js';
 import { authenticateToken } from '../../core/middleware/auth.js';
 import { checkPermissions } from '../../core/middleware/rbac.js';
+import { apiLimiter } from '../../core/middleware/rateLimiter.js';
 
 const router = express.Router();
+
+// Apply rate limiting to all routes
+router.use(apiLimiter);
 
 /**
  * GET /api/roles

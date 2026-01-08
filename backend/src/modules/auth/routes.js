@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import { users } from '../../data.js';
 import { generateToken, comparePassword } from '../../core/utils/auth.js';
+import { authLimiter } from '../../core/middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -10,6 +11,7 @@ const router = express.Router();
  * Login user and return JWT token
  */
 router.post('/login',
+  authLimiter,
   [
     body('username').notEmpty().withMessage('Username is required'),
     body('password').notEmpty().withMessage('Password is required')

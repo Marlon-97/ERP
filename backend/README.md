@@ -43,20 +43,30 @@ npm start
 - **Username**: admin
 - **Password**: Admin123!
 
+## Security Features
+
+- **Rate Limiting**: 
+  - Login endpoint: 5 attempts per 15 minutes per IP
+  - API endpoints: 100 requests per 15 minutes per IP
+- **JWT Authentication**: Secure token-based auth
+- **Password Validation**: Strong password requirements
+- **Helmet.js**: Security headers
+- **CORS**: Configured for frontend origin
+
 ## API Endpoints
 
-### Authentication
+### Authentication (Rate Limited: 5 req/15min)
 - `POST /api/auth/login` - Login and get JWT token
 - `POST /api/auth/logout` - Logout (client-side)
 
-### Users (requires authentication)
+### Users (requires authentication, Rate Limited: 100 req/15min)
 - `GET /api/users` - Get all users (requires `users:read`)
 - `GET /api/users/:id` - Get user by ID (requires `users:read`)
 - `POST /api/users` - Create new user (requires `users:create`)
 - `PUT /api/users/:id` - Update user (requires `users:update`)
 - `DELETE /api/users/:id` - Delete user (requires `users:delete`)
 
-### Roles (requires authentication)
+### Roles (requires authentication, Rate Limited: 100 req/15min)
 - `GET /api/roles` - Get all roles (requires `roles:read`)
 - `GET /api/roles/permissions` - Get available permissions
 - `GET /api/roles/:id` - Get role by ID (requires `roles:read`)
