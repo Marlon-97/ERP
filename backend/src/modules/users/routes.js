@@ -1,10 +1,11 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { users, userIdCounter, roles } from '../../data.js';
+import { User, Role } from '../../core/database/models.js';
 import { hashPassword, validatePasswordStrength } from '../../core/utils/auth.js';
 import { authenticateToken } from '../../core/middleware/auth.js';
 import { checkPermissions } from '../../core/middleware/rbac.js';
 import { apiLimiter } from '../../core/middleware/rateLimiter.js';
+import { sendWelcomeEmail } from '../../core/services/emailService.js';
 
 const router = express.Router();
 
@@ -15,23 +16,37 @@ router.use(apiLimiter);
  * GET /api/users
  * Get all users (requires users:read permission)
  */
-router.get('/', authenticateToken, checkPermissions('users:read'), (req, res) => {
-  const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-  res.json(usersWithoutPasswords);
+router.get('/', authenticateToken, checkPermissions('users:read'), async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: { exclude: ['password'] }
+    });
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'An error occurred while fetching users' });
+  }
 });
 
 /**
  * GET /api/users/:id
  * Get user by ID (requires users:read permission)
  */
-router.get('/:id', authenticateToken, checkPermissions('users:read'), (req, res) => {
-  const user = users.find(u => u.id === parseInt(req.params.id));
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
+router.get('/:id', authenticateToken, checkPermissions('users:read'), async (req, res) => {
+  try {
+    const user = await User.findByPk(parseInt(req.params.id), {
+      attributes: { exclude: ['password'] }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-  const { password, ...userWithoutPassword } = user;
-  res.json(userWithoutPassword);
+    res.json(user);
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'An error occurred while fetching user' });
+  }
 });
 
 /**
@@ -55,47 +70,55 @@ router.post('/',
 
     const { username, email, password, role } = req.body;
 
-    // Check if username already exists
-    if (users.find(u => u.username === username)) {
-      return res.status(400).json({ error: 'Username already exists' });
+    try {
+      // Check if username already exists
+      const existingUsername = await User.findOne({ where: { username } });
+      if (existingUsername) {
+        return res.status(400).json({ error: 'Username already exists' });
+      }
+
+      // Check if email already exists
+      const existingEmail = await User.findOne({ where: { email } });
+      if (existingEmail) {
+        return res.status(400).json({ error: 'Email already exists' });
+      }
+
+      // Validate password strength
+      const passwordValidation = validatePasswordStrength(password);
+      if (!passwordValidation.valid) {
+        return res.status(400).json({ error: passwordValidation.message });
+      }
+
+      // Check if role exists
+      const userRole = await Role.findOne({ where: { name: role } });
+      if (!userRole) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+
+      // Hash password
+      const hashedPassword = await hashPassword(password);
+
+      // Create new user
+      const newUser = await User.create({
+        username,
+        email,
+        password: hashedPassword,
+        role,
+        permissions: userRole.permissions
+      });
+
+      // Send welcome email (async, don't wait for it)
+      sendWelcomeEmail(newUser.toJSON()).catch(err => {
+        console.error('Failed to send welcome email:', err);
+      });
+
+      // Return user without password
+      const { password: _, ...userWithoutPassword } = newUser.toJSON();
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      console.error('Error creating user:', error);
+      res.status(500).json({ error: 'An error occurred while creating user' });
     }
-
-    // Check if email already exists
-    if (users.find(u => u.email === email)) {
-      return res.status(400).json({ error: 'Email already exists' });
-    }
-
-    // Validate password strength
-    const passwordValidation = validatePasswordStrength(password);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ error: passwordValidation.message });
-    }
-
-    // Check if role exists
-    const userRole = roles.find(r => r.name === role);
-    if (!userRole) {
-      return res.status(400).json({ error: 'Invalid role' });
-    }
-
-    // Hash password
-    const hashedPassword = await hashPassword(password);
-
-    // Create new user
-    const newUser = {
-      id: userIdCounter++,
-      username,
-      email,
-      password: hashedPassword,
-      role,
-      permissions: userRole.permissions,
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(newUser);
-
-    // Return user without password
-    const { password: _, ...userWithoutPassword } = newUser;
-    res.status(201).json(userWithoutPassword);
   }
 );
 
@@ -117,46 +140,59 @@ router.put('/:id',
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const userIndex = users.findIndex(u => u.id === parseInt(req.params.id));
-    if (userIndex === -1) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const { username, email, role, password } = req.body;
-
-    // Check if new username already exists
-    if (username && users.find(u => u.username === username && u.id !== parseInt(req.params.id))) {
-      return res.status(400).json({ error: 'Username already exists' });
-    }
-
-    // Check if new email already exists
-    if (email && users.find(u => u.email === email && u.id !== parseInt(req.params.id))) {
-      return res.status(400).json({ error: 'Email already exists' });
-    }
-
-    // Update user
-    if (username) users[userIndex].username = username;
-    if (email) users[userIndex].email = email;
-    if (role) {
-      const userRole = roles.find(r => r.name === role);
-      if (!userRole) {
-        return res.status(400).json({ error: 'Invalid role' });
+    try {
+      const user = await User.findByPk(parseInt(req.params.id));
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
       }
-      users[userIndex].role = role;
-      users[userIndex].permissions = userRole.permissions;
-    }
-    if (password) {
-      const passwordValidation = validatePasswordStrength(password);
-      if (!passwordValidation.valid) {
-        return res.status(400).json({ error: passwordValidation.message });
+
+      const { username, email, role, password } = req.body;
+
+      // Check if new username already exists
+      if (username && username !== user.username) {
+        const existingUsername = await User.findOne({ where: { username } });
+        if (existingUsername) {
+          return res.status(400).json({ error: 'Username already exists' });
+        }
+        user.username = username;
       }
-      users[userIndex].password = await hashPassword(password);
+
+      // Check if new email already exists
+      if (email && email !== user.email) {
+        const existingEmail = await User.findOne({ where: { email } });
+        if (existingEmail) {
+          return res.status(400).json({ error: 'Email already exists' });
+        }
+        user.email = email;
+      }
+
+      // Update role
+      if (role && role !== user.role) {
+        const userRole = await Role.findOne({ where: { name: role } });
+        if (!userRole) {
+          return res.status(400).json({ error: 'Invalid role' });
+        }
+        user.role = role;
+        user.permissions = userRole.permissions;
+      }
+
+      // Update password if provided
+      if (password) {
+        const passwordValidation = validatePasswordStrength(password);
+        if (!passwordValidation.valid) {
+          return res.status(400).json({ error: passwordValidation.message });
+        }
+        user.password = await hashPassword(password);
+      }
+
+      await user.save();
+
+      const { password: _, ...userWithoutPassword } = user.toJSON();
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ error: 'An error occurred while updating user' });
     }
-
-    users[userIndex].updatedAt = new Date().toISOString();
-
-    const { password: _, ...userWithoutPassword } = users[userIndex];
-    res.json(userWithoutPassword);
   }
 );
 
@@ -164,19 +200,27 @@ router.put('/:id',
  * DELETE /api/users/:id
  * Delete user (requires users:delete permission)
  */
-router.delete('/:id', authenticateToken, checkPermissions('users:delete'), (req, res) => {
-  const userIndex = users.findIndex(u => u.id === parseInt(req.params.id));
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
-  }
+router.delete('/:id', authenticateToken, checkPermissions('users:delete'), async (req, res) => {
+  try {
+    const user = await User.findByPk(parseInt(req.params.id));
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-  // Prevent deleting admin user
-  if (users[userIndex].role === 'admin' && users.filter(u => u.role === 'admin').length === 1) {
-    return res.status(400).json({ error: 'Cannot delete the last admin user' });
-  }
+    // Prevent deleting admin user if it's the last admin
+    if (user.role === 'admin') {
+      const adminCount = await User.count({ where: { role: 'admin' } });
+      if (adminCount === 1) {
+        return res.status(400).json({ error: 'Cannot delete the last admin user' });
+      }
+    }
 
-  users.splice(userIndex, 1);
-  res.json({ message: 'User deleted successfully' });
+    await user.destroy();
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'An error occurred while deleting user' });
+  }
 });
 
 export default router;

@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { users } from '../../data.js';
+import { User } from '../../core/database/models.js';
 import { generateToken, comparePassword } from '../../core/utils/auth.js';
 import { authLimiter } from '../../core/middleware/rateLimiter.js';
 
@@ -24,29 +24,34 @@ router.post('/login',
 
     const { username, password } = req.body;
 
-    // Find user
-    const user = users.find(u => u.username === username);
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+    try {
+      // Find user
+      const user = await User.findOne({ where: { username } });
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Verify password
+      const isValid = await comparePassword(password, user.password);
+      if (!isValid) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Get user's role permissions
+      const token = generateToken(user);
+
+      // Return user info without password
+      const { password: _, ...userWithoutPassword } = user.toJSON();
+
+      res.json({
+        message: 'Login successful',
+        token,
+        user: userWithoutPassword
+      });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'An error occurred during login' });
     }
-
-    // Verify password
-    const isValid = await comparePassword(password, user.password);
-    if (!isValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Get user's role permissions
-    const token = generateToken(user);
-
-    // Return user info without password
-    const { password: _, ...userWithoutPassword } = user;
-
-    res.json({
-      message: 'Login successful',
-      token,
-      user: userWithoutPassword
-    });
   }
 );
 
