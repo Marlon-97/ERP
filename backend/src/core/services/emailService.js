@@ -14,7 +14,7 @@ if (config.azure?.emailConnectionString) {
  * @param {string} options.to - Recipient email address
  * @param {string} options.subject - Email subject
  * @param {string} options.htmlContent - HTML content of the email
- * @param {string} options.plainTextContent - Plain text content (optional)
+ * @param {string} options.plainTextContent - Plain text content (required)
  * @returns {Promise<Object>} - Send result
  */
 export const sendEmail = async ({ to, subject, htmlContent, plainTextContent }) => {
@@ -24,12 +24,16 @@ export const sendEmail = async ({ to, subject, htmlContent, plainTextContent }) 
     return { status: 'disabled', message: 'Email service not configured' };
   }
 
+  if (!plainTextContent) {
+    throw new Error('Plain text content is required for emails');
+  }
+
   try {
     const message = {
       senderAddress: config.azure.senderEmail || 'DoNotReply@noreply.com',
       content: {
         subject,
-        plainText: plainTextContent || htmlContent.replace(/<[^>]*>/g, ''),
+        plainText: plainTextContent,
         html: htmlContent
       },
       recipients: {
@@ -54,6 +58,25 @@ export const sendEmail = async ({ to, subject, htmlContent, plainTextContent }) 
  * @param {string} temporaryPassword - Temporary password (if applicable)
  */
 export const sendWelcomeEmail = async (user, temporaryPassword = null) => {
+  const plainText = `
+Welcome to ERP System!
+
+Hello ${user.username},
+
+Your account has been created successfully. You can now access the ERP system.
+${temporaryPassword ? `
+Your Login Credentials:
+Username: ${user.username}
+Temporary Password: ${temporaryPassword}
+
+Please change your password after your first login.
+` : ''}
+If you have any questions, please contact your system administrator.
+
+Best regards,
+ERP System Team
+  `.trim();
+
   const htmlContent = `
     <html>
       <head>
@@ -93,7 +116,8 @@ export const sendWelcomeEmail = async (user, temporaryPassword = null) => {
   return sendEmail({
     to: user.email,
     subject: 'Welcome to ERP System',
-    htmlContent
+    htmlContent,
+    plainTextContent: plainText
   });
 };
 
@@ -103,6 +127,20 @@ export const sendWelcomeEmail = async (user, temporaryPassword = null) => {
  * @param {string} resetLink - Password reset link
  */
 export const sendPasswordResetEmail = async (user, resetLink) => {
+  const plainText = `
+Password Reset Request
+
+Hello ${user.username},
+
+We received a request to reset your password. Click the link below to reset it:
+${resetLink}
+
+If you didn't request this, please ignore this email.
+
+Best regards,
+ERP System Team
+  `.trim();
+
   const htmlContent = `
     <html>
       <head>
@@ -134,6 +172,7 @@ export const sendPasswordResetEmail = async (user, resetLink) => {
   return sendEmail({
     to: user.email,
     subject: 'Password Reset Request',
-    htmlContent
+    htmlContent,
+    plainTextContent: plainText
   });
 };
